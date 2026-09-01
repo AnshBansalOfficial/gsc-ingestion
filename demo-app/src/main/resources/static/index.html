@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI-Assisted Java Development — POC</title>
+<style>
+  :root {
+    --bg: #0e1116;
+    --panel: #161b22;
+    --panel-2: #1c2230;
+    --line: #2a3140;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent: #58a6ff;
+    --ok: #3fb950;
+    --warn: #d29922;
+    --err: #f85149;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 32px 24px 64px; }
+
+  header h1 { margin: 0 0 6px; font-size: 22px; letter-spacing: -0.01em; }
+  header p { margin: 0; color: var(--muted); font-size: 14px; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0 0; }
+  .chip {
+    font: 12px/1 var(--mono); color: var(--muted);
+    background: var(--panel); border: 1px solid var(--line);
+    padding: 7px 10px; border-radius: 999px;
+  }
+  .chip b { color: var(--text); font-weight: 600; }
+
+  .flow {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+    margin: 24px 0; padding: 16px; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 10px;
+    font: 12px/1 var(--mono); color: var(--muted);
+  }
+  .flow span { padding: 6px 9px; background: var(--panel-2); border-radius: 6px; white-space: nowrap; }
+  .flow i { color: var(--line); font-style: normal; }
+
+  .actions { display: flex; gap: 14px; flex-wrap: wrap; margin: 8px 0 28px; }
+  button {
+    flex: 1 1 220px; padding: 18px 20px; border-radius: 10px; cursor: pointer;
+    font-size: 15px; font-weight: 600; color: var(--text);
+    background: var(--panel); border: 1px solid var(--line);
+    transition: border-color .15s, background .15s, transform .05s;
+    text-align: left;
+  }
+  button:hover:not(:disabled) { background: var(--panel-2); }
+  button:active:not(:disabled) { transform: translateY(1px); }
+  button:disabled { opacity: .5; cursor: default; }
+  button small { display: block; margin-top: 5px; font-weight: 400; font-size: 12px; color: var(--muted); }
+  #btn-alert:hover:not(:disabled) { border-color: var(--warn); }
+  #btn-error:hover:not(:disabled) { border-color: var(--err); }
+
+  .banner {
+    display: none; margin-bottom: 20px; padding: 12px 14px; border-radius: 8px;
+    background: rgba(248,81,73,.1); border: 1px solid rgba(248,81,73,.35);
+    color: #ffb4b0; font-size: 13px;
+  }
+  .banner.show { display: block; }
+
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 14px; }
+
+  .empty { color: var(--muted); font-size: 14px; padding: 28px; text-align: center;
+           border: 1px dashed var(--line); border-radius: 10px; }
+
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+          padding: 18px; margin-bottom: 14px; }
+  .card-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+  .id { font: 13px/1 var(--mono); color: var(--text); font-weight: 600; }
+  .badge { font: 11px/1 var(--mono); padding: 5px 8px; border-radius: 5px; font-weight: 600; }
+  .badge.ALERT { color: #f0c674; background: rgba(210,153,34,.15); border: 1px solid rgba(210,153,34,.4); }
+  .badge.ERROR { color: #ff9d97; background: rgba(248,81,73,.13); border: 1px solid rgba(248,81,73,.4); }
+  .outcome { margin-left: auto; font: 11px/1 var(--mono); color: var(--muted); }
+  .outcome.success { color: var(--ok); }
+  .outcome.failed { color: var(--err); }
+  .why { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
+  .why code { font: 12px/1.4 var(--mono); color: #ffb4b0; }
+
+  ol.timeline { list-style: none; margin: 18px 0 0; padding: 0; }
+  ol.timeline li { position: relative; padding: 0 0 16px 26px; border-left: 2px solid var(--line); }
+  ol.timeline li:last-child { padding-bottom: 0; border-left-color: transparent; }
+  ol.timeline li::before {
+    content: ''; position: absolute; left: -6px; top: 3px; width: 10px; height: 10px;
+    border-radius: 50%; background: var(--bg); border: 2px solid var(--line);
+  }
+  li.done::before { background: var(--ok); border-color: var(--ok); }
+  li.active::before { background: var(--accent); border-color: var(--accent);
+                      animation: pulse 1.2s ease-in-out infinite; }
+  li.failed::before { background: var(--err); border-color: var(--err); }
+  li.skipped::before { border-color: var(--muted); }
+  @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(88,166,255,.5); } 50% { box-shadow: 0 0 0 6px rgba(88,166,255,0); } }
+
+  .stage-label { font-size: 14px; }
+  li.pending .stage-label { color: var(--muted); }
+  li.active .stage-label { color: var(--accent); font-weight: 600; }
+  li.failed .stage-label { color: var(--err); }
+  .stage-detail { font: 12px/1.45 var(--mono); color: var(--muted); margin-top: 3px;
+                  word-break: break-word; }
+  .pr { display: inline-block; margin-top: 14px; padding: 10px 14px; border-radius: 8px;
+        background: rgba(63,185,80,.12); border: 1px solid rgba(63,185,80,.4);
+        color: #7ee787; font-size: 13px; font-weight: 600; text-decoration: none; }
+  .pr:hover { background: rgba(63,185,80,.2); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>AI-Assisted Java Development — Proof of Concept</h1>
+    <p>An application error becomes a reviewed pull request, without a human in the loop.</p>
+    <div class="chips" id="chips"></div>
+  </header>
+
+  <div class="flow">
+    <span>Frontend</span><i>→</i><span>Java service</span><i>→</i><span>CloudWatch Logs</span><i>→</i>
+    <span>Classification</span><i>→</i><span>AI agent</span><i>→</i><span>Codebase</span><i>→</i>
+    <span>Tests</span><i>→</i><span>GitHub PR</span>
+  </div>
+
+  <div class="banner" id="banner"></div>
+
+  <div class="actions">
+    <button id="btn-alert">Send Alert
+      <small>Emits a WARN operational signal → classified ALERT → email only</small>
+    </button>
+    <button id="btn-error">Simulate Error
+      <small>Triggers the real defect → classified ERROR → AI agent opens a PR</small>
+    </button>
+  </div>
+
+  <h2>Pipeline activity</h2>
+  <div id="incidents"><div class="empty">Waiting for an application event.</div></div>
+</div>
+
+<script>
+  let orchestratorUrl = 'http://localhost:8090';
+
+  const el = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  async function loadConfig() {
+    try {
+      const cfg = await (await fetch('/api/config')).json();
+      if (cfg.orchestratorUrl) orchestratorUrl = cfg.orchestratorUrl;
+    } catch { /* keep the default */ }
+  }
+
+  function banner(message) {
+    const b = el('banner');
+    b.textContent = message || '';
+    b.classList.toggle('show', Boolean(message));
+  }
+
+  async function trigger(path, button) {
+    button.disabled = true;
+    try {
+      const res = await fetch(path, { method: 'POST' });
+      const body = await res.json();
+      console.log('triggered', path, body);
+      banner('');
+    } catch (err) {
+      banner('Could not reach the Java service: ' + err.message);
+    } finally {
+      setTimeout(() => { button.disabled = false; }, 1200);
+    }
+  }
+
+  el('btn-alert').onclick = (e) => trigger('/api/alert', e.currentTarget);
+  el('btn-error').onclick = (e) => trigger('/api/error', e.currentTarget);
+
+  function renderChips(p) {
+    el('chips').innerHTML = [
+      ['log group', p.logGroup], ['region', p.region], ['model', p.model],
+      ['repo', p.repo], ['base', p.baseBranch], ['notify', p.notifyTo],
+    ].map(([k, v]) => '<span class="chip">' + k + ' <b>' + esc(v) + '</b></span>').join('');
+  }
+
+  function renderIncident(inc) {
+    const stages = inc.stages.map((s) =>
+      '<li class="' + s.status + '">'
+      + '<div class="stage-label">' + esc(s.label) + '</div>'
+      + (s.detail ? '<div class="stage-detail">' + esc(s.detail) + '</div>' : '')
+      + '</li>').join('');
+
+    const exception = inc.exception
+      ? '<p class="why"><code>' + esc(inc.exception.class + ': ' + inc.exception.message) + '</code>'
+        + (inc.appFrame ? ' at ' + esc(inc.appFrame) : '') + '</p>'
+      : '';
+
+    return '<div class="card">'
+      + '<div class="card-head">'
+      +   '<span class="id">' + esc(inc.incidentId) + '</span>'
+      +   '<span class="badge ' + esc(inc.kind) + '">' + esc(inc.kind) + '</span>'
+      +   '<span class="outcome ' + esc(inc.outcome) + '">' + esc(inc.outcome.replace('_', ' ')) + '</span>'
+      + '</div>'
+      + '<p class="why">' + esc(inc.message) + '</p>'
+      + exception
+      + '<ol class="timeline">' + stages + '</ol>'
+      + (inc.prUrl ? '<a class="pr" href="' + esc(inc.prUrl) + '" target="_blank" rel="noopener">View pull request →</a>' : '')
+      + '</div>';
+  }
+
+  async function poll() {
+    try {
+      const data = await (await fetch(orchestratorUrl + '/status')).json();
+      renderChips(data.pipeline);
+      el('incidents').innerHTML = data.incidents.length
+        ? data.incidents.map(renderIncident).join('')
+        : '<div class="empty">Waiting for an application event.</div>';
+      banner('');
+    } catch {
+      banner('Orchestrator is not reachable at ' + orchestratorUrl + '. Start it with: cd orchestrator && npm start');
+    }
+  }
+
+  loadConfig().then(() => { poll(); setInterval(poll, 1500); });
+</script>
+</body>
+</html>

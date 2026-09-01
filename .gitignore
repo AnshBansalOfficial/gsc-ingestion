@@ -1,0 +1,26 @@
+# Secrets — never commit
+.env
+.env.local
+*.pem
+*.csv
+
+# Java / Maven
+target/
+*.class
+*.jar
+*.war
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Logs & local state
+*.log
+logs/
+.orchestrator-state.json
+
+# Editors / OS
+.idea/
+*.iml
+.vscode/
+.DS_Store

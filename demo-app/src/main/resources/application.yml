@@ -1,0 +1,20 @@
+server:
+  port: ${APP_PORT:8080}
+
+spring:
+  application:
+    name: demo-app
+
+poc:
+  # Where the frontend polls pipeline status. The frontend only READS from here;
+  # it never asks the orchestrator to do anything.
+  orchestrator-url: ${ORCHESTRATOR_URL:http://localhost:${ORCHESTRATOR_PORT:8090}}
+
+logging:
+  level:
+    root: INFO
+    com.gsc.poc: INFO
+    # The appender publishes from a background thread; keeping the SDK quiet avoids
+    # noisy chatter being shipped to CloudWatch alongside real application events.
+    software.amazon.awssdk: WARN
+    org.apache.http: WARN

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+
+  <!-- Console output so the demo operator can see events locally as they happen. -->
+  <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder>
+      <pattern>%d{HH:mm:ss.SSS} %-5level [%X{incidentId:-no-incident}] %logger{28} - %msg%n</pattern>
+    </encoder>
+  </appender>
+
+  <!--
+    Ships every event to AWS CloudWatch Logs as JSON.
+    Configured from the environment so no account details live in the repo.
+  -->
+  <appender name="CLOUDWATCH" class="com.gsc.poc.logging.CloudWatchLogsAppender">
+    <logGroup>${CW_LOG_GROUP:-/gsc-poc/demo-app}</logGroup>
+    <region>${AWS_REGION:-ap-south-1}</region>
+    <serviceName>demo-app</serviceName>
+  </appender>
+
+  <!-- Tests must not need AWS credentials, so CloudWatch is only wired in at runtime. -->
+  <springProfile name="!test">
+    <root level="INFO">
+      <appender-ref ref="CONSOLE"/>
+      <appender-ref ref="CLOUDWATCH"/>
+    </root>
+  </springProfile>
+
+  <springProfile name="test">
+    <root level="INFO">
+      <appender-ref ref="CONSOLE"/>
+    </root>
+  </springProfile>
+
+</configuration>
