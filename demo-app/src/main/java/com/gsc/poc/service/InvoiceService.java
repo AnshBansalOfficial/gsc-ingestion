@@ -27,11 +27,15 @@ public class InvoiceService {
     /**
      * Mean value of the invoice's line items, used by the billing summary widget.
      *
-     * @return the average line amount in cents
+     * @return the average line amount in cents, or 0 when there are no line items
      */
     public int averageLineItemCents(Invoice invoice) {
+        int itemCount = invoice.items().size();
+        if (itemCount == 0) {
+            return 0;
+        }
         int total = totalCents(invoice);
-        return total / invoice.items().size();
+        return total / itemCount;
     }
 
     /**
