@@ -30,8 +30,11 @@ public class InvoiceService {
      * @return the average line amount in cents
      */
     public int averageLineItemCents(Invoice invoice) {
-        int total = totalCents(invoice);
-        return total / invoice.items().size();
+        int itemCount = invoice.items().size();
+        if (itemCount == 0) {
+            return 0;
+        }
+        return totalCents(invoice) / itemCount;
     }
 
     /**
