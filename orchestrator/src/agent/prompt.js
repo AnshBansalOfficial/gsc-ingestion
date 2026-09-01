@@ -38,7 +38,7 @@ TESTS: <which tests you added or ran, and the result>
 
 Do not emit that final message before run_tests has passed.`;
 
-export function buildIncidentMessage(incident) {
+export function buildIncidentMessage(incident, repoTree, prefetched = '') {
   const exception = incident.exception || {};
   return `INCIDENT REPORT (from AWS CloudWatch Logs)
 
@@ -60,6 +60,8 @@ ${incident.stackTrace || '(not available)'}
 
 The failing application frame is ${incident.appFrame || 'unknown'}.
 
-Investigate this incident in the repository you have been given, fix the defect, and
-validate it with the test suite.`;
+REPOSITORY FILES (already listed for you — do not call list_files):
+${repoTree}
+${prefetched}
+Read AGENTS.md, then fix the defect and validate it with the test suite.`;
 }

@@ -19,6 +19,9 @@ npm-debug.log*
 logs/
 .orchestrator-state.json
 
+# Throwaway clones the agent works in, one per incident
+orchestrator/.agent-workspace/
+
 # Editors / OS
 .idea/
 *.iml

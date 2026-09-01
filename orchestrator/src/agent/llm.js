@@ -94,9 +94,13 @@ const openAiCompatible = {
     const payload = {
       model: config.llm.model,
       temperature: 0.1,
-      // Reasoning tokens count against the provider's token quota, so the effort level is
+      // Reasoning tokens count against a provider's token quota, so the effort level is
       // configurable — 'low' keeps an agent loop inside a small per-minute budget.
-      ...(process.env.LLM_REASONING_EFFORT ? { reasoning_effort: process.env.LLM_REASONING_EFFORT } : {}),
+      // OpenAI rejects reasoning_effort alongside function tools on /v1/chat/completions,
+      // so it is dropped there rather than failing every call in the agent loop.
+      ...(process.env.LLM_REASONING_EFFORT && !(config.llm.provider === 'openai' && tools?.length)
+        ? { reasoning_effort: process.env.LLM_REASONING_EFFORT }
+        : {}),
       messages: [
         { role: 'system', content: system },
         ...messages.map((m) => {
@@ -126,8 +130,7 @@ const openAiCompatible = {
       payload.tool_choice = 'auto';
     }
 
-    const baseUrl = process.env.LLM_BASE_URL || 'https://api.groq.com/openai/v1';
-    const data = await postJson(`${baseUrl}/chat/completions`, {
+    const data = await postJson(`${config.llm.baseUrl}/chat/completions`, {
       authorization: `Bearer ${config.llm.apiKey}`,
     }, payload);
 

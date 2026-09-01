@@ -87,11 +87,13 @@ async function runErrorWorkflow(incidentId) {
     await vcs.createBranch(workspaceDir, branch);
     status.updateIncident(incidentId, { branch });
 
+    // Every agent tool call, run_tests included, reports against the analysis stage.
+    // TESTS_RUN represents the orchestrator's own authoritative run, so attributing the
+    // agent's self-checks to it would light up two stages at once and out of order.
     const onProgress = ({ type, name, target }) => {
       if (type !== 'tool') return;
       const label = target ? `${name} ${target}` : name;
-      const stageKey = name === 'run_tests' ? 'TESTS_RUN' : 'AGENT_ANALYSING';
-      status.setStage(incidentId, stageKey, 'active', label);
+      status.setStage(incidentId, 'AGENT_ANALYSING', 'active', label);
       console.log(`[agent] ${incidentId} ${label}`);
     };
 
@@ -103,7 +105,34 @@ async function runErrorWorkflow(incidentId) {
     if (changes.files.length === 0) {
       throw new Error('the agent did not modify any file');
     }
-    status.setStage(incidentId, 'FIX_GENERATED', 'done', changes.files.join(', '));
+
+    // A passing suite is not sufficient evidence of a fix: the existing tests pass with
+    // OR without a guard for the empty case, so a change with no new test would sail
+    // through. AGENTS.md requires a test for every behaviour change, so require the
+    // agent to have touched a test file before this can reach a pull request.
+    for (let attempt = 1; !touchesTests(changes.files) && attempt <= config.llm.maxRepairAttempts; attempt++) {
+      console.warn(`[pipeline] ${incidentId} no regression test added — asking the agent for one (attempt ${attempt})`);
+      status.setStage(incidentId, 'FIX_GENERATED', 'active',
+        `source changed but no test added — requesting a regression test (attempt ${attempt})`);
+
+      result = await runAgent({
+        incident: {
+          ...status.getIncident(incidentId),
+          message: `${incident.message}\n\nYour fix changed only ${changes.files.join(', ')}. `
+            + 'AGENTS.md requires a regression test for every behaviour change. Add a test to '
+            + 'demo-app/src/test/java/com/gsc/poc/service/InvoiceServiceTest.java that fails '
+            + 'without your fix and passes with it, then run run_tests.',
+        },
+        workspaceDir,
+        onProgress,
+      });
+      changes = await vcs.getChanges(workspaceDir);
+    }
+
+    const hasRegressionTest = touchesTests(changes.files);
+    status.updateIncident(incidentId, { hasRegressionTest });
+    status.setStage(incidentId, 'FIX_GENERATED', 'done',
+      changes.files.join(', ') + (hasRegressionTest ? '' : ' (no regression test — flagged in the PR)'));
 
     // The orchestrator validates independently — the agent's own claim is not enough.
     status.setStage(incidentId, 'TESTS_RUN', 'active', 'running mvn test');
@@ -162,6 +191,11 @@ async function runErrorWorkflow(incidentId) {
   }
 }
 
+/** AGENTS.md requires a test alongside any behaviour change. */
+function touchesTests(files) {
+  return files.some((f) => f.includes('/src/test/'));
+}
+
 function commitMessage(incidentId, title, report) {
   return [
     title,
@@ -173,8 +207,8 @@ function commitMessage(incidentId, title, report) {
   ].filter((l) => l !== null).join('\n');
 }
 
-function pullRequestBody({ incident, report, changes, testResult }) {
-  const section = (heading, value) => (value ? `## ${heading}\n\n${value}\n` : '');
+export function pullRequestBody({ incident, report, changes, testResult }) {
+  const section = (heading, value) => (value ? `## ${heading}\n\n${value}\n` : null);
   return [
     '> Opened automatically by the AI engineering agent in response to a production error signal.',
     '',
@@ -200,7 +234,11 @@ function pullRequestBody({ incident, report, changes, testResult }) {
     testResult.summary,
     '```',
     '',
-    report.tests ? `${report.tests}\n` : '',
+    incident.hasRegressionTest === false
+      ? '> **Reviewer note:** the agent did not add a regression test for this change, so the '
+        + 'passing suite does not by itself prove the defect is fixed. Please add one before merging.\n'
+      : null,
+    report.tests ? `${report.tests}\n` : null,
     '## Files changed\n',
     '```',
     changes.diffStat || changes.files.join('\n'),
@@ -209,7 +247,9 @@ function pullRequestBody({ incident, report, changes, testResult }) {
     '---',
     '',
     `Log message: \`${incident.message}\``,
-  ].filter((l) => l !== '').join('\n');
+    // Only optional sections are dropped. Empty strings in this list are deliberate blank
+    // lines: Markdown needs them to separate a heading or table from the text above it.
+  ].filter((l) => l !== null && l !== undefined).join('\n');
 }
 
 export { seenIncidents };

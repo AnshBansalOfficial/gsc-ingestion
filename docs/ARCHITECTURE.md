@@ -87,7 +87,14 @@ CloudWatch. It also means CloudWatch Logs Insights can query the events directly
 
 ### Codebase understanding: repo instructions plus targeted retrieval
 
-The agent's context comes from three places:
+The agent's context comes from four places:
+
+0. **Pre-fetched sources.** The classifier already extracted `InvoiceService.java:34` from
+   the stack frame, so the pipeline reads that file and its test file and hands both over
+   in the opening message. The agent does not spend round trips rediscovering what the
+   pipeline already knows. This is ordinary retrieval-augmented context, and it cut a run
+   from 16 tool calls to 7 — which matters most under a per-minute token budget.
+
 
 1. **`AGENTS.md`** — the repository's own instructions: layout, conventions, how to test,
    what not to touch. The prompt tells the agent to read it first and treat it as binding.
@@ -115,6 +122,16 @@ that run passes. A model's claim that tests pass is not evidence.
 On failure the test output goes back to the agent for a bounded number of repair attempts
 (`AGENT_MAX_REPAIR_ATTEMPTS`, default 2). If it still fails: no PR, and a failure email
 saying human review is required.
+
+A passing suite is also not sufficient on its own. The existing tests pass whether or not
+`averageLineItemCents` guards the empty case, so a fix with no new test would validate
+cleanly while proving nothing. The pipeline therefore requires the agent to have touched a
+file under `src/test/` before a PR can open, and sends the change back asking for a
+regression test if it has not. If the agent still does not add one, the PR opens carrying an
+explicit reviewer warning rather than silently implying the change is proven.
+
+This was found by running the pipeline repeatedly: one run produced a correct one-line fix
+with no test, and the original validation accepted it.
 
 ### The agent works in a throwaway clone
 
@@ -147,17 +164,21 @@ Swapping in Redis or Postgres means reimplementing four functions.
 ## Provider independence
 
 `agent/llm.js` exposes one `chat({ system, messages, tools })` function over a neutral
-message format, with adapters for OpenAI-compatible endpoints (Groq) and Anthropic.
-Switching is two environment variables:
+message format. Two adapters cover three providers: OpenAI-compatible (OpenAI and Groq
+share it, differing only by base URL) and Anthropic. `config.js` holds a provider table of
+key variable, base URL and default model. Switching is two environment variables:
 
 ```bash
-LLM_PROVIDER=anthropic
-LLM_MODEL=claude-sonnet-5
-ANTHROPIC_API_KEY=sk-ant-...
+LLM_PROVIDER=openai      # openai | groq | anthropic
+LLM_MODEL=gpt-5.4-mini
 ```
 
-Adding a provider means adding one adapter — the agent loop, its tools and its prompt are
-untouched.
+Adding a provider means a row in that table plus, only if its wire format differs, one
+adapter. The agent loop, its tools and its prompt are untouched.
+
+Provider quirks are absorbed here rather than leaking outward — OpenAI rejects
+`reasoning_effort` alongside function tools on `/v1/chat/completions`, so the adapter drops
+it there instead of failing every call in the loop.
 
 ## Failure handling
 
@@ -168,6 +189,7 @@ untouched.
 | LLM 429 / 5xx / timeout | Retried three times with backoff in `llm.js` |
 | Agent modifies nothing | Workflow fails before committing; failure email sent |
 | Tests fail | Bounded repair attempts, then no PR and a failure email |
+| Fix has no regression test | Sent back for a test; if still absent, the PR opens with a reviewer warning |
 | PR already exists for the branch | Existing PR is returned instead of erroring, so reruns are safe |
 | Duplicate log delivery | Incidents deduplicated by incident ID; poller deduplicates by CloudWatch event ID |
 | Two errors triggered at once | Agent runs are serialised through a promise queue |

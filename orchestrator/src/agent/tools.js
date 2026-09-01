@@ -162,10 +162,14 @@ export function createTools(workspaceDir, { onToolEvent } = {}) {
   /** Files the agent has written, so the pipeline can report the real change set. */
   const writtenFiles = new Set();
 
-  async function execute(name, args) {
+  /**
+   * `silent` is for calls the pipeline makes on the agent's behalf (context prefetch).
+   * Reporting those as agent activity would overstate what the model actually did.
+   */
+  async function execute(name, args, { silent = false } = {}) {
     const impl = implementations[name];
     if (!impl) return { ok: false, content: `Unknown tool "${name}".` };
-    if (onToolEvent) onToolEvent({ name, args });
+    if (onToolEvent && !silent) onToolEvent({ name, args });
     try {
       const content = await impl(args || {});
       if (name === 'write_file' && args?.path) writtenFiles.add(args.path);

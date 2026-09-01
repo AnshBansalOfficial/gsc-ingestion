@@ -26,8 +26,13 @@ function repoUrl({ withToken = false } = {}) {
 }
 
 async function git(dir, args) {
+  return (await gitRaw(dir, args)).trim();
+}
+
+/** Untrimmed variant: porcelain output is column-sensitive, so trimming corrupts it. */
+async function gitRaw(dir, args) {
   const { stdout } = await exec('git', ['-C', dir, ...args], { maxBuffer: 20 * 1024 * 1024 });
-  return stdout.trim();
+  return stdout;
 }
 
 /**
@@ -56,11 +61,25 @@ export async function createBranch(dir, branch) {
 
 /** What actually changed on disk, which is more trustworthy than what the model claims. */
 export async function getChanges(dir) {
-  const status = await git(dir, ['status', '--porcelain']);
-  const files = status.split('\n').filter(Boolean).map((line) => line.slice(3).trim());
+  // Read untrimmed: `git status --porcelain` prefixes each path with a two-character
+  // status field and a space, so a leading space is significant. Trimming the whole
+  // output would shift the first line and clip a character off its filename.
+  const status = await gitRaw(dir, ['status', '--porcelain']);
+  const files = status.split('\n').filter(Boolean).map(parsePorcelainPath);
   const diffStat = files.length ? await git(dir, ['diff', '--stat']) : '';
   const diff = files.length ? await git(dir, ['diff']) : '';
   return { files, diffStat, diff };
+}
+
+/**
+ * Extracts the path from one `git status --porcelain` line, handling the rename form
+ * `R  old -> new` by reporting the new path.
+ */
+function parsePorcelainPath(line) {
+  const match = line.match(/^(.{2})\s(.*)$/);
+  const raw = (match ? match[2] : line).trim();
+  const renamed = raw.split(' -> ');
+  return (renamed.length > 1 ? renamed[renamed.length - 1] : raw).replace(/^"|"$/g, '');
 }
 
 export async function commitAll(dir, message) {

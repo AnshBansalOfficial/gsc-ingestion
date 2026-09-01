@@ -9,8 +9,8 @@ import { chat } from './llm.js';
  * steps. Recent output is what the model is reasoning about; older output can be
  * re-fetched with the same tool call if it is needed again.
  */
-const TOOL_RESULT_MAX_CHARS = Number(process.env.AGENT_TOOL_RESULT_MAX_CHARS || 6000);
-const FULL_TOOL_RESULTS_KEPT = Number(process.env.AGENT_FULL_TOOL_RESULTS_KEPT || 3);
+const TOOL_RESULT_MAX_CHARS = Number(process.env.AGENT_TOOL_RESULT_MAX_CHARS || 4000);
+const FULL_TOOL_RESULTS_KEPT = Number(process.env.AGENT_FULL_TOOL_RESULTS_KEPT || 2);
 import { createTools, formatTestResult } from './tools.js';
 import { SYSTEM_PROMPT, buildIncidentMessage } from './prompt.js';
 
@@ -28,7 +28,20 @@ export async function runAgent({ incident, workspaceDir, onProgress = () => {} }
     },
   });
 
-  const messages = [{ role: 'user', content: buildIncidentMessage(incident) }];
+  // The file listing is cheap to produce locally and costs the model nothing to obtain.
+  // Handing it over up front removes several exploratory round trips, which matters when
+  // the provider enforces a per-minute token budget.
+  onProgress({ type: 'tool', name: 'gathering repository context', target: '' });
+  const repoTree = (await tools.execute('list_files', { dir: '.' }, { silent: true })).content;
+
+  // The classifier already extracted the failing file from the stack frame, so the
+  // pipeline knows which source the agent needs before the agent asks. Handing over that
+  // file and its test file up front removes the exploratory round trips that dominate
+  // wall-clock time under a per-minute token budget. The tools remain available, so the
+  // agent can still pull anything else it decides it needs.
+  const prefetched = await prefetchSources(tools, repoTree, incident.appFrame);
+
+  const messages = [{ role: 'user', content: buildIncidentMessage(incident, repoTree, prefetched) }];
   const toolLog = [];
   let finalText = '';
   let noEditNudges = 0;
@@ -98,6 +111,33 @@ export async function runRepair({ incident, workspaceDir, testResult, onProgress
     onProgress,
   });
   return result;
+}
+
+/**
+ * Reads the source file named in the stack frame plus its matching test file, formatted
+ * for the opening message. Returns '' when the frame cannot be resolved, in which case
+ * the agent falls back to finding the file itself.
+ */
+async function prefetchSources(tools, repoTree, appFrame) {
+  const fileName = String(appFrame || '').split(':')[0];
+  if (!fileName.endsWith('.java')) return '';
+
+  const paths = repoTree.split('\n').filter((p) => !p.endsWith('/'));
+  const sourcePath = paths.find((p) => p.endsWith(`/${fileName}`));
+  if (!sourcePath) return '';
+
+  const testName = fileName.replace(/\.java$/, 'Test.java');
+  const testPath = paths.find((p) => p.endsWith(`/${testName}`));
+
+  const sections = [];
+  for (const [label, filePath] of [['Failing source', sourcePath], ['Its tests', testPath]]) {
+    if (!filePath) continue;
+    const read = await tools.execute('read_file', { path: filePath }, { silent: true });
+    if (read.ok) sections.push(`${label} — ${filePath}:\n${read.content}`);
+  }
+  if (!sections.length) return '';
+
+  return `\nRELEVANT FILES (already read for you):\n\n${sections.join('\n\n')}\n`;
 }
 
 /**

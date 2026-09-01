@@ -49,7 +49,7 @@ The fix is deliberately small. The point of the POC is the pipeline around it.
   permissions are needed
 - A GitHub fine-grained PAT with **Contents: read/write** and **Pull requests: read/write**
 - An SMTP account (Gmail app password works)
-- An LLM API key (Groq or Anthropic)
+- An LLM API key (OpenAI, Groq, or Anthropic)
 
 ## Setup
 
@@ -67,9 +67,9 @@ credentials come from the standard AWS chain rather than from `.env`.
 |---|---|
 | `AWS_REGION` | Region for the log group, e.g. `ap-south-1` |
 | `CW_LOG_GROUP` | Log group name, created automatically on first run |
-| `LLM_PROVIDER` | `groq` or `anthropic` |
-| `LLM_MODEL` | e.g. `openai/gpt-oss-120b`, or `claude-sonnet-5` |
-| `GROQ_API_KEY` / `ANTHROPIC_API_KEY` | Key for the selected provider |
+| `LLM_PROVIDER` | `openai`, `groq`, or `anthropic` |
+| `LLM_MODEL` | e.g. `gpt-5.4-mini`, `openai/gpt-oss-120b`, `claude-sonnet-5` |
+| `OPENAI_API_KEY` / `GROQ_API_KEY` / `ANTHROPIC_API_KEY` | Key for the selected provider |
 | `GITHUB_TOKEN` | Fine-grained PAT |
 | `GITHUB_REPO` | `owner/repo` |
 | `GITHUB_BASE_BRANCH` | PR base branch, e.g. `master` |
@@ -126,6 +126,25 @@ Or from the CLI:
 ```bash
 aws logs tail /gsc-poc/demo-app --since 10m
 ```
+
+### How long a run takes
+
+Measured end to end, from clicking *Simulate Error* to the PR appearing:
+
+| Provider / model | Time | Notes |
+|---|---|---|
+| `openai` / `gpt-5.4-mini` | **~50 s** | No rate limiting. 7 tool calls. Recommended. |
+| `groq` / `openai/gpt-oss-120b` | 2–10 min | Free, but capped at 8,000 tokens/minute — most of the time is spent waiting on the quota, and run-to-run variance is high. |
+
+Switching provider is two variables in `.env`:
+
+```bash
+LLM_PROVIDER=openai      # or groq, or anthropic
+LLM_MODEL=gpt-5.4-mini
+```
+
+Email #1 exists precisely so the recipient is not staring at a silent system while the
+agent works — which matters much more on the free tier than on a paid key.
 
 ### Repeating the demo
 

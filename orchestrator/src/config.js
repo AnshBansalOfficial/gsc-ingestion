@@ -15,6 +15,30 @@ function required(name) {
 
 const provider = process.env.LLM_PROVIDER || 'groq';
 
+/**
+ * Per-provider defaults. Adding a provider is a row here plus an adapter in agent/llm.js;
+ * nothing else in the pipeline knows which model is behind the agent.
+ */
+const PROVIDER_DEFAULTS = {
+  groq: {
+    keyVar: 'GROQ_API_KEY',
+    baseUrl: 'https://api.groq.com/openai/v1',
+    model: 'openai/gpt-oss-120b',
+  },
+  openai: {
+    keyVar: 'OPENAI_API_KEY',
+    baseUrl: 'https://api.openai.com/v1',
+    model: 'gpt-5-mini',
+  },
+  anthropic: {
+    keyVar: 'ANTHROPIC_API_KEY',
+    baseUrl: null,
+    model: 'claude-sonnet-5',
+  },
+};
+
+const providerDefaults = PROVIDER_DEFAULTS[provider] || PROVIDER_DEFAULTS.groq;
+
 export const config = {
   aws: {
     region: process.env.AWS_REGION || 'ap-south-1',
@@ -33,9 +57,11 @@ export const config = {
 
   llm: {
     provider,
-    model: process.env.LLM_MODEL || (provider === 'anthropic' ? 'claude-sonnet-5' : 'openai/gpt-oss-120b'),
-    apiKey: provider === 'anthropic' ? process.env.ANTHROPIC_API_KEY : process.env.GROQ_API_KEY,
-    maxIterations: Number(process.env.AGENT_MAX_ITERATIONS || 24),
+    model: process.env.LLM_MODEL || providerDefaults.model,
+    apiKey: process.env[providerDefaults.keyVar],
+    keyVar: providerDefaults.keyVar,
+    baseUrl: process.env.LLM_BASE_URL || providerDefaults.baseUrl,
+    maxIterations: Number(process.env.AGENT_MAX_ITERATIONS || 14),
     maxRepairAttempts: Number(process.env.AGENT_MAX_REPAIR_ATTEMPTS || 2),
   },
 
@@ -62,9 +88,13 @@ export const config = {
 /** Fails fast at startup rather than halfway through an incident. */
 export function assertConfig() {
   required('GITHUB_TOKEN');
+  if (!PROVIDER_DEFAULTS[config.llm.provider]) {
+    throw new Error(`Unknown LLM_PROVIDER "${config.llm.provider}" `
+      + `(supported: ${Object.keys(PROVIDER_DEFAULTS).join(', ')})`);
+  }
   if (!config.llm.apiKey) {
-    const key = config.llm.provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'GROQ_API_KEY';
-    throw new Error(`Missing required environment variable: ${key} (LLM_PROVIDER=${config.llm.provider})`);
+    throw new Error(`Missing required environment variable: ${config.llm.keyVar} `
+      + `(LLM_PROVIDER=${config.llm.provider})`);
   }
   if (config.smtp.enabled) {
     required('SMTP_HOST'); required('SMTP_USER'); required('SMTP_PASSWORD');
