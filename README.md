@@ -24,7 +24,8 @@ real PR you can open on GitHub.
 | Path | What it is |
 |---|---|
 | `demo-app/` | Java 17 / Spring Boot service. Emits alert and error signals, ships every log to CloudWatch, and contains the deliberate defect the agent fixes. |
-| `demo-app/src/main/resources/static/index.html` | The demo frontend — two buttons and a live pipeline timeline. |
+| `frontend/` | React + Vite demo console. Builds into the Java service's static resources. |
+| `demo-app/src/main/resources/static/` | The built console, committed so `mvn spring-boot:run` alone serves it. |
 | `orchestrator/` | Node.js pipeline: tails CloudWatch, classifies events, runs the AI agent, validates, opens the PR, sends the emails. |
 | `AGENTS.md` | Repository instructions the AI agent reads before changing code. |
 | `docs/ARCHITECTURE.md` | Why it is built this way, and what changes for production. |
@@ -44,7 +45,7 @@ The fix is deliberately small. The point of the POC is the pipeline around it.
 ## Prerequisites
 
 - Java 17 and Maven
-- Node.js 20+
+- Node.js 20+ (for the orchestrator; also for the console if you change it)
 - An AWS account with credentials configured (`aws configure`) — only CloudWatch Logs
   permissions are needed
 - A GitHub fine-grained PAT with **Contents: read/write** and **Pull requests: read/write**
@@ -56,6 +57,15 @@ The fix is deliberately small. The point of the POC is the pipeline around it.
 ```bash
 cp .env.example .env     # then fill in the values
 cd orchestrator && npm install && cd ..
+```
+
+The console is committed pre-built, so nothing else is needed to run the demo. To change
+the UI:
+
+```bash
+cd frontend && npm install
+npm run build            # writes into demo-app/src/main/resources/static/
+npm run dev              # or: hot reload on :5173, proxying /api to the Java service
 ```
 
 `.env` is gitignored. Nothing in this repo reads credentials from anywhere else, and AWS
@@ -83,17 +93,17 @@ without sending mail, `LLM_BASE_URL` to point at any OpenAI-compatible endpoint.
 
 ## Running it
 
-Two terminals.
-
 ```bash
-# terminal 1 — the Java service
-set -a; . ./.env; set +a
-cd demo-app && mvn spring-boot:run
+./scripts/start.sh       # both services, waits until they are healthy
+./scripts/stop.sh        # stops them
 ```
 
+Or by hand, in two terminals:
+
 ```bash
-# terminal 2 — the orchestrator
-cd orchestrator && npm start
+set -a; . ./.env; set +a
+cd demo-app && mvn spring-boot:run      # terminal 1
+cd orchestrator && npm start            # terminal 2
 ```
 
 The orchestrator verifies GitHub push access and SMTP login at startup, so a broken

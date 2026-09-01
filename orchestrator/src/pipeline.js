@@ -41,10 +41,15 @@ export async function handleRecord({ record, logStream }) {
     stackTrace: record.exception?.stackTrace || null,
     logGroup: config.aws.logGroup,
     fingerprint: verdict.fingerprint,
+    // The verbatim CloudWatch record. Showing the real log line is what makes the
+    // demo credible — the alternative is asking an audience to trust a summary.
+    raw: compactRecord(record),
   });
 
   status.setStage(incidentId, 'LOG_INGESTED', 'done', `stream ${logStream}`);
-  status.setStage(incidentId, 'CLASSIFIED', 'done', `${verdict.kind} — ${verdict.reason}`);
+  status.setStage(incidentId, 'CLASSIFIED', 'done', verdict.kind === Kind.ERROR
+    ? 'routed to the engineering agent'
+    : 'notify only, no code change');
   console.log(`[pipeline] ${incidentId} classified ${verdict.kind}: ${verdict.reason}`);
 
   if (verdict.kind === Kind.ALERT) {
@@ -56,6 +61,15 @@ export async function handleRecord({ record, logStream }) {
     console.error('[pipeline] unhandled workflow error:', err);
   });
   return queue;
+}
+
+/** The log record as it arrived, minus the stack trace, for display in the UI. */
+function compactRecord(record) {
+  const { exception, ...rest } = record;
+  const compact = exception
+    ? { ...rest, exception: { class: exception.class, message: exception.message } }
+    : rest;
+  return JSON.stringify(compact);
 }
 
 async function runAlertWorkflow(incidentId) {
@@ -175,7 +189,7 @@ async function runErrorWorkflow(incidentId) {
     });
 
     status.updateIncident(incidentId, { prUrl: pr.url, rootCause: report.rootCause });
-    status.setStage(incidentId, 'PR_CREATED', 'done', `#${pr.number} ${pr.url}`);
+    status.setStage(incidentId, 'PR_CREATED', 'done', `#${pr.number}`);
     console.log(`[pipeline] ${incidentId} pull request ready: ${pr.url}`);
 
     await notifier.sendPullRequestReady(status.getIncident(incidentId));

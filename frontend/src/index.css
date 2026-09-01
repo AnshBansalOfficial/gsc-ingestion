@@ -1,0 +1,318 @@
+/*
+  A single-viewport console. The page itself never scrolls: the main pane holds one idea
+  at a time, and the engineering detail lives in a panel that can scroll on its own.
+
+  Hierarchy carries the load — one display face used big and sparingly, a plain body
+  face, and monospace reserved strictly for machine artifacts (ids, log lines, test
+  output). Colour appears in one place, the progress track, so it always means state.
+*/
+:root {
+  --bg:      #ffffff;
+  --sunk:    #f7f7f5;
+  --ink:     #101114;
+  --ink-2:   #55585f;
+  --ink-3:   #8c9096;
+  --rule:    #e4e4e0;
+  --live:    #2a5bd7;
+  --done:    #127a45;
+  --alert:   #a2610a;
+  --error:   #c8372d;
+  --display: "Bricolage Grotesque", "Helvetica Neue", Arial, sans-serif;
+  --body:    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --mono:    "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  --drawer:  min(430px, 34vw);
+}
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  overflow: hidden;              /* the page never scrolls; the drawer does */
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.6 var(--body);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- two panes ---------- */
+.app {
+  height: 100dvh;
+  display: grid;
+  grid-template-columns: 1fr 0px;
+  transition: grid-template-columns .3s cubic-bezier(.4, 0, .2, 1);
+}
+.app[data-detail="true"] { grid-template-columns: 1fr var(--drawer); }
+
+.stage {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: clamp(24px, 5vh, 64px) clamp(28px, 6vw, 96px);
+  overflow: hidden;
+}
+.stage-inner { width: 100%; max-width: 920px; margin: 0 auto; }
+
+/* ---------- identity and actions ---------- */
+.eyebrow {
+  margin: 0 0 18px;
+  font: 500 11px/1 var(--mono);
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+h1 {
+  margin: 0;
+  font-family: var(--display);
+  font-size: clamp(34px, 4.6vw, 62px);
+  font-weight: 700;
+  line-height: 1.01;
+  letter-spacing: -.036em;
+  max-width: 16ch;
+}
+
+.lede { margin: 22px 0 0; max-width: 52ch; font-size: 16px; color: var(--ink-2); }
+
+.actions { display: flex; gap: 12px; margin: clamp(22px, 3.4vh, 38px) 0 0; flex-wrap: wrap; }
+
+.btn {
+  appearance: none;
+  font: 500 15px/1 var(--body);
+  cursor: pointer;
+  padding: 15px 22px;
+  border-radius: 7px;
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: #fff;
+  transition: opacity .12s, background .12s;
+}
+.btn:hover:not(:disabled) { opacity: .84; }
+.btn:focus-visible { outline: 2px solid var(--live); outline-offset: 3px; }
+.btn:disabled { opacity: .35; cursor: default; }
+.btn.ghost { background: transparent; color: var(--ink); border-color: var(--rule); }
+.btn.ghost:hover:not(:disabled) { background: var(--sunk); opacity: 1; }
+
+.hint { margin: 13px 0 0; font-size: 13px; color: var(--ink-3); }
+
+.alarm {
+  margin: 20px 0 0;
+  padding: 12px 14px;
+  border-radius: 7px;
+  background: #fdf2f1;
+  border: 1px solid #f0cfcb;
+  color: var(--error);
+  font-size: 14px;
+}
+
+/* ---------- current run ---------- */
+.status { margin: clamp(26px, 4.4vh, 52px) 0 0; padding-top: clamp(22px, 3.4vh, 36px); border-top: 1px solid var(--rule); }
+
+.track { display: flex; align-items: flex-start; margin: 0 0 clamp(20px, 3vh, 30px); padding: 0; list-style: none; }
+
+.phase { flex: 1 1 0; min-width: 0; position: relative; padding-top: 22px; }
+/* The rail sits behind the markers; the last phase carries only a stub so the line ends
+   on its dot rather than running off the end of the row. */
+.phase::before {
+  content: '';
+  position: absolute;
+  inset: 5px 0 auto 0;
+  height: 2px;
+  background: var(--rule);
+}
+.phase:first-child::before { left: 5px; }
+.phase:last-child::before { right: calc(100% - 7px); }
+.phase::after {
+  content: '';
+  position: absolute;
+  left: 0; top: 0;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 2px solid var(--rule);
+}
+
+.phase-name { font-size: 13.5px; color: var(--ink-3); letter-spacing: -.01em; }
+
+.phase[data-s="done"]::before { background: var(--done); }
+.phase[data-s="done"]::after { background: var(--done); border-color: var(--done); }
+.phase[data-s="done"] .phase-name { color: var(--ink); }
+
+.phase[data-s="active"]::before { background: linear-gradient(to right, var(--live), var(--rule)); }
+.phase[data-s="active"]::after { background: var(--live); border-color: var(--live); }
+.phase[data-s="active"] .phase-name { color: var(--live); font-weight: 600; }
+
+.phase[data-s="failed"]::after { background: var(--error); border-color: var(--error); }
+.phase[data-s="failed"] .phase-name { color: var(--error); font-weight: 600; }
+
+.now {
+  margin: 0;
+  font-family: var(--display);
+  font-size: clamp(22px, 2.4vw, 30px);
+  font-weight: 500;
+  letter-spacing: -.022em;
+}
+.now[data-tone="live"] { color: var(--live); }
+.now[data-tone="done"] { color: var(--done); }
+.now[data-tone="error"] { color: var(--error); }
+
+.meta { margin: 8px 0 0; font: 400 13px/1.6 var(--mono); color: var(--ink-3); }
+
+.status-actions { display: flex; align-items: center; gap: 18px; margin: clamp(16px, 2.6vh, 26px) 0 0; flex-wrap: wrap; }
+
+.pr-link {
+  display: inline-block;
+  padding: 13px 20px;
+  border-radius: 7px;
+  background: var(--done);
+  color: #fff;
+  text-decoration: none;
+  font-weight: 500;
+  font-size: 15px;
+}
+.pr-link:hover { opacity: .88; }
+.pr-link:focus-visible { outline: 2px solid var(--live); outline-offset: 3px; }
+
+.detail-toggle {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 4px 0;
+  cursor: pointer;
+  font: 400 13.5px/1 var(--body);
+  color: var(--ink-3);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.detail-toggle:hover { color: var(--ink); }
+.detail-toggle:focus-visible { outline: 2px solid var(--live); outline-offset: 3px; }
+
+/* ---------- detail drawer ---------- */
+.drawer {
+  min-width: 0;
+  overflow: hidden auto;
+  background: var(--sunk);
+  border-left: 1px solid var(--rule);
+  scrollbar-width: thin;
+}
+.drawer[aria-hidden="true"] { border-left-color: transparent; }
+
+.drawer-inner { width: var(--drawer); padding: clamp(20px, 4vh, 34px) 26px 40px; }
+
+.drawer-head { display: flex; align-items: center; gap: 12px; margin: 0 0 22px; }
+.drawer-head h2 {
+  margin: 0;
+  font: 500 11px/1 var(--mono);
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.drawer-close {
+  appearance: none;
+  margin-left: auto;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--ink-3);
+  padding: 0 2px;
+}
+.drawer-close:hover { color: var(--ink); }
+.drawer-close:focus-visible { outline: 2px solid var(--live); outline-offset: 3px; }
+
+.drawer h3 {
+  margin: 26px 0 10px;
+  font: 500 11px/1 var(--mono);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.drawer h3:first-of-type { margin-top: 0; }
+
+.log-wrap { position: relative; }
+.log {
+  margin: 0;
+  padding: 12px;
+  border-radius: 6px;
+  background: #eeeeea;
+  font: 400 11px/1.65 var(--mono);
+  color: var(--ink-2);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 7em;
+  overflow: hidden;
+}
+/* Fades the clamp rather than cutting a glyph in half. */
+.log-wrap::after {
+  content: '';
+  position: absolute;
+  inset: auto 1px 1px 1px;
+  height: 2.2em;
+  border-radius: 0 0 6px 6px;
+  background: linear-gradient(to bottom, rgb(238 238 234 / 0), #eeeeea);
+}
+
+.steps { list-style: none; margin: 0; padding: 0; }
+.steps li { display: flex; gap: 10px; align-items: baseline; padding: 5px 0; }
+.steps .s { flex: 0 0 11px; color: var(--ink-3); font: 400 11px/1.5 var(--mono); }
+.steps .body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.steps .l { font-size: 13px; line-height: 1.35; color: var(--ink-2); }
+.steps .r {
+  margin-top: 1px;
+  color: var(--ink-3);
+  font: 400 11px/1.45 var(--mono);
+  overflow-wrap: anywhere;
+}
+.steps li[data-s="done"] .s { color: var(--done); }
+.steps li[data-s="active"] .s { color: var(--live); }
+.steps li[data-s="active"] .l { color: var(--live); font-weight: 600; }
+.steps li[data-s="failed"] .s,
+.steps li[data-s="failed"] .l { color: var(--error); }
+
+.past { list-style: none; margin: 0; padding: 0; }
+.past li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--rule);
+  font-size: 13px;
+}
+.past .id { font: 400 11.5px/1 var(--mono); color: var(--ink-2); }
+.past .k { font: 500 10px/1 var(--mono); letter-spacing: .1em; }
+.past .k[data-k="ERROR"] { color: var(--error); }
+.past .k[data-k="ALERT"] { color: var(--alert); }
+.past .o { margin-left: auto; color: var(--ink-3); font-size: 12px; }
+.past a { color: var(--done); text-decoration: none; font-weight: 500; }
+.past a:hover { text-decoration: underline; }
+
+.rig {
+  margin: 26px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--rule);
+  font: 400 11px/1.9 var(--mono);
+  color: var(--ink-3);
+  white-space: pre-line;
+}
+
+/* ---------- narrow: the drawer overlays instead of splitting ---------- */
+@media (max-width: 900px) {
+  :root { --drawer: min(360px, 88vw); }
+  .app,
+  .app[data-detail="true"] { grid-template-columns: 1fr; }
+  .drawer {
+    position: fixed;
+    inset: 0 0 0 auto;
+    width: var(--drawer);
+    transform: translateX(100%);
+    transition: transform .3s cubic-bezier(.4, 0, .2, 1);
+    box-shadow: -12px 0 32px rgb(0 0 0 / .07);
+  }
+  .app[data-detail="true"] .drawer { transform: translateX(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
