@@ -40,6 +40,12 @@ class InvoiceServiceTest {
     }
 
     @Test
+    @DisplayName("averageLineItemCents returns zero for an invoice with no line items")
+    void averageLineItemCentsReturnsZeroForEmptyInvoice() {
+        assertEquals(0, service.averageLineItemCents(invoiceWithAmounts()));
+    }
+
+    @Test
     @DisplayName("averageLineItemCents truncates toward zero on uneven division")
     void averageLineItemCentsTruncates() {
         assertEquals(1000, service.averageLineItemCents(invoiceWithAmounts(1000, 1001)));
@@ -50,5 +56,12 @@ class InvoiceServiceTest {
     void summariseRendersInvoice() {
         String summary = service.summarise(invoiceWithAmounts(1000, 2000));
         assertEquals("INV-TEST: 2 item(s), total 3000 cents, average 1500 cents", summary);
+    }
+
+    @Test
+    @DisplayName("summarise handles invoices with no line items")
+    void summariseHandlesEmptyInvoice() {
+        String summary = service.summarise(invoiceWithAmounts());
+        assertEquals("INV-TEST: 0 item(s), total 0 cents, average 0 cents", summary);
     }
 }
