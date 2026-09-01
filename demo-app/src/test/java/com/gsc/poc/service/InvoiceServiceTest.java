@@ -34,6 +34,12 @@ class InvoiceServiceTest {
     }
 
     @Test
+    @DisplayName("averageLineItemCents returns zero for an empty invoice")
+    void averageLineItemCentsReturnsZeroForEmptyInvoice() {
+        assertEquals(0, service.averageLineItemCents(invoiceWithAmounts()));
+    }
+
+    @Test
     @DisplayName("averageLineItemCents returns the mean line amount")
     void averageLineItemCentsReturnsMean() {
         assertEquals(1500, service.averageLineItemCents(invoiceWithAmounts(1000, 2000)));
