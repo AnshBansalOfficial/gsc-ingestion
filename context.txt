@@ -1,0 +1,530 @@
+Claude — Build an AI-Assisted Java Development POC
+
+I need you to build a complete working Proof of Concept for an AI-assisted Java development workflow.
+
+Context
+
+I received an RFR through Unthinkable Solutions from GSC Company for a developer/resource focused on AI-assisted development for Java.
+
+The broader requirement involves using AI to assist with software development by consuming application/production signals such as logs, understanding the relevant codebase, identifying the source of an issue, making the required code changes, validating those changes, and creating a Pull Request.
+
+I need to build a small working demonstration of this concept.
+
+This is not intended to be production-ready.
+
+It is a POC that needs to convincingly demonstrate the core workflow end-to-end.
+
+I have approximately one day, so keep the implementation simple and reliable.
+
+Do not build unnecessary enterprise infrastructure.
+
+What I want to demonstrate
+
+The core concept is:
+
+Application
+    ↓
+CloudWatch Logs
+    ↓
+Log Classification
+    ↓
+Alert / Error
+    ↓
+AI Coding Agent
+    ↓
+Codebase Understanding
+    ↓
+Code Modification
+    ↓
+Testing
+    ↓
+GitHub Pull Request
+
+The important thing is that this should be a real working pipeline, not a mocked demo.
+
+Demo Application
+
+Create a very small Java application.
+
+The application exists primarily to generate logs for the demonstration.
+
+It should have a very simple frontend/interface with actions such as:
+
+[ Send Alert ]
+
+[ Simulate Error ]
+
+When the user triggers an alert, the Java application should produce an alert/warning-type log.
+
+When the user triggers an error, the Java application should produce an error that is intentionally introduced for the purpose of the POC.
+
+The application itself should remain extremely simple.
+
+There is no need to create a complicated business domain.
+
+The actual bug/error can be trivial.
+
+The point is not to demonstrate complex Java logic.
+
+The point is to demonstrate what happens after an error is produced.
+
+AWS / CloudWatch
+
+I already have an AWS account.
+
+The application's logs should genuinely reach AWS CloudWatch.
+
+I want to be able to open the AWS console during the demo and show that the log was actually generated and ingested.
+
+Design the simplest sensible architecture for:
+
+Java Application
+       ↓
+CloudWatch
+       ↓
+Downstream processing
+
+You decide the appropriate AWS services/mechanisms for the POC.
+
+Prioritize simplicity.
+
+Log Classification
+
+The system should distinguish between different types of events.
+
+At minimum:
+
+Alert
+Error
+
+The purpose is to demonstrate that not every event automatically triggers an AI coding workflow.
+
+For example:
+
+ALERT
+  ↓
+Notification
+
+ERROR
+  ↓
+AI coding workflow
+
+The classification does not need to use an LLM.
+
+Use whatever simple and reliable mechanism makes sense.
+
+The important thing is that this classification step genuinely exists in the architecture.
+
+Alert Workflow
+
+For an alert:
+
+Frontend
+   ↓
+Java application
+   ↓
+CloudWatch
+   ↓
+Classification
+   ↓
+Alert detected
+   ↓
+Email notification
+
+Use an SMTP-based email mechanism for the POC.
+
+The email should simply demonstrate that the system detected the alert.
+
+For example:
+
+An alert has been detected by the system.
+
+It does not need to do anything further.
+
+Error Workflow
+
+This is the primary workflow.
+
+When an error is generated:
+
+Frontend
+   ↓
+Java application
+   ↓
+CloudWatch
+   ↓
+Error detected
+   ↓
+AI coding workflow starts
+
+Immediately after the error is detected, send an SMTP email informing the user that the AI agent has started working on the issue.
+
+Something conceptually like:
+
+An application error has been detected.
+The AI engineering agent is investigating the issue and preparing a Pull Request.
+
+This email is important because the AI/code-generation process may take some time.
+
+AI Coding Agent
+
+The AI agent should be capable of taking the detected error and investigating the associated Java codebase.
+
+It should be able to:
+
+receive the relevant error information
+inspect the repository
+identify relevant source files
+understand the relevant code
+inspect relevant tests
+use repository-level instructions/documentation where appropriate
+determine the likely cause
+make an appropriate code change
+avoid unrelated modifications
+run tests
+create a Git branch
+commit the changes
+create a GitHub Pull Request
+
+Use Claude as the LLM.
+
+Use the appropriate Claude API/model available.
+
+Keep model configuration flexible rather than hardcoding assumptions unnecessarily.
+
+Codebase Understanding
+
+An important part of this POC is demonstrating that the AI agent can understand a codebase rather than simply receiving a raw error message and guessing.
+
+Give the repository some basic structure/documentation that the agent can use.
+
+For example, repository instructions, source code, tests, and documentation.
+
+The agent should retrieve the relevant context from the repository before modifying code.
+
+I have heard about approaches involving:
+
+knowledge graphs
+code graphs
+vector search
+embeddings
+semantic code search
+repository indexing
+
+These are relevant concepts for a larger implementation.
+
+For this POC, however, do not build complicated infrastructure unless you genuinely believe it is necessary.
+
+The codebase is intentionally small.
+
+The architecture should be designed so that more sophisticated context retrieval could be introduced later.
+
+Code Modification
+
+The intentionally introduced error can be very simple.
+
+I do NOT need a realistic production bug.
+
+A simple controlled error is enough.
+
+For example, the application could contain a deliberately introduced failure that the AI agent can identify and remove/fix.
+
+The resulting Pull Request can therefore be small.
+
+That's okay.
+
+The purpose is to prove the complete workflow:
+
+Error
+ ↓
+Understand
+ ↓
+Fix
+ ↓
+Test
+ ↓
+PR
+
+The complexity of the actual bug is not the focus.
+
+Testing
+
+Before creating the Pull Request, the AI agent should validate its changes.
+
+Since this is a Java project, use the project's appropriate build/test tooling.
+
+The agent should:
+
+Modify code
+   ↓
+Run tests
+   ↓
+If successful
+   ↓
+Create PR
+
+If tests fail, the system should handle that appropriately rather than blindly creating a PR.
+
+Keep the retry/repair mechanism simple.
+
+GitHub
+
+The final output must be a real GitHub Pull Request.
+
+The agent should:
+
+create a branch
+make the changes
+commit them
+push the branch
+create the Pull Request
+
+The PR should contain:
+
+a meaningful title
+incident/error context
+explanation of the change
+test/validation information
+relevant files changed
+
+Do not fake the PR.
+
+I want to be able to open GitHub during the demo and show the actual PR and diff.
+
+Completion Email
+
+Once the PR has successfully been created, send a second SMTP email.
+
+The email should communicate that:
+
+The AI agent has completed the investigation.
+The fix has been implemented and validated.
+A Pull Request has been created.
+
+Include the actual Pull Request URL.
+
+So the complete notification flow becomes:
+
+ERROR DETECTED
+     ↓
+EMAIL #1
+"AI agent has started working"
+     ↓
+AI investigation
+     ↓
+Code modification
+     ↓
+Testing
+     ↓
+PR creation
+     ↓
+EMAIL #2
+"PR has been created"
+
+The two-email approach is intentional because the AI workflow may be asynchronous and take time.
+
+Frontend
+
+The frontend should provide a simple way to demonstrate the system.
+
+It should allow me to trigger the different scenarios.
+
+It should also make the workflow understandable during a presentation.
+
+For example, it could show statuses such as:
+
+Waiting
+
+Error detected
+↓
+CloudWatch log received
+↓
+Error classified
+↓
+AI agent working
+↓
+Code analysis
+↓
+Fix generated
+↓
+Tests running
+↓
+PR created
+
+The UI does not need to be elaborate.
+
+It simply needs to make the POC easy to demonstrate.
+
+Important Architecture Principle
+
+The frontend should not directly invoke the AI agent.
+
+The frontend is simply the mechanism for generating the application event.
+
+Conceptually:
+
+Frontend
+   ↓
+Java Application
+   ↓
+CloudWatch
+   ↓
+Classification / Processing
+   ↓
+AI Agent
+   ↓
+Repository
+   ↓
+Tests
+   ↓
+GitHub
+
+This distinction matters because the purpose of the POC is to demonstrate that an application event/log can initiate the engineering workflow.
+
+Security
+
+Do not hardcode credentials.
+
+Use environment variables/configuration for things such as:
+
+AWS credentials/configuration
+Claude API key
+GitHub credentials
+SMTP credentials
+
+Provide an appropriate .env.example or equivalent.
+
+Do not commit secrets.
+
+Keep the architecture extensible
+
+Although the implementation should be minimal, structure it sensibly so that the following could be added later:
+
+More observability sources
+More sophisticated log classification
+Knowledge graphs
+Code graphs
+Vector search
+Repository indexing
+Large enterprise repositories
+Multiple Java services
+Multiple repositories
+Human approval workflows
+Different notification channels
+Different LLMs
+
+Don't implement all of those now.
+
+Just avoid designing the POC in a way that makes future expansion impossible.
+
+What the final demonstration should look like
+
+I should be able to demonstrate this live:
+
+1. Open the frontend
+
+Show the simple application.
+
+2. Generate an alert
+
+Click the alert button.
+
+Show:
+
+Java application
+      ↓
+CloudWatch
+      ↓
+Alert classification
+      ↓
+Email
+3. Generate an error
+
+Click the error button.
+
+Show the resulting error in CloudWatch.
+
+4. Show the first email
+
+Something like:
+
+Error detected. AI agent is investigating and preparing a PR.
+
+5. Let the AI agent work
+
+The agent should inspect the repository, identify the issue, modify the code and test it.
+
+6. Show the resulting Pull Request
+
+Open GitHub and show the actual branch, commit, diff and PR.
+
+7. Show the second email
+
+Something like:
+
+AI agent completed the fix. Pull Request created.
+
+with the actual PR URL.
+
+What I need from you
+
+Do not just give me a conceptual explanation.
+
+Build the actual POC.
+
+Start by inspecting the available environment and deciding on the simplest practical architecture.
+
+Then implement it step by step.
+
+For every component you create:
+
+keep it minimal
+make it actually functional
+test it
+document how it works
+avoid unnecessary dependencies
+
+When something requires manual AWS/GitHub/SMTP configuration, clearly tell me exactly what I need to do.
+
+At the end, provide:
+
+complete project structure
+all required source code
+AWS setup instructions
+Claude/API setup
+GitHub setup
+SMTP setup
+environment variables required
+commands to run everything
+end-to-end testing instructions
+demo instructions
+architecture explanation
+README/documentation
+
+Most importantly:
+
+Optimize for getting a working end-to-end POC within one day.
+
+Do not spend time building sophisticated infrastructure that does not materially improve the demonstration.
+
+The final system should prove one simple idea:
+
+APPLICATION ERROR
+       ↓
+CLOUDWATCH
+       ↓
+CLASSIFICATION
+       ↓
+AI AGENT
+       ↓
+CODEBASE UNDERSTANDING
+       ↓
+CODE FIX
+       ↓
+TESTS
+       ↓
+GITHUB PULL REQUEST
+
+Build that end-to-end for real.
+
+
