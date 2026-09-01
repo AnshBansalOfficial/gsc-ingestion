@@ -31,7 +31,10 @@ public class InvoiceService {
      */
     public int averageLineItemCents(Invoice invoice) {
         int total = totalCents(invoice);
-        return total / invoice.items().size();
+        int count = invoice.items().size();
+        // Guard against division by zero when the invoice has no line items.
+        // An empty invoice should report an average of 0 cents.
+        return count == 0 ? 0 : total / count;
     }
 
     /**
