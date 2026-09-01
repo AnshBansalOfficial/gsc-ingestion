@@ -122,11 +122,42 @@ function githubHeaders() {
   };
 }
 
-/** Startup check: confirms the token can actually push before a demo depends on it. */
+/**
+ * Startup check: confirms the token can actually push before a demo depends on it.
+ *
+ * `repo.permissions` is NOT usable for this — it reports the authenticated *user's*
+ * rights on the repository, so a repo owner sees push:true even when the token itself
+ * has no write access. Instead we attempt a ref creation with an all-zero sha: it can
+ * never succeed, and the status code distinguishes the two cases. 403 means the token
+ * lacks contents:write; 422 means the write was permitted and only the sha was invalid.
+ */
 export async function verifyGitHub() {
   const response = await fetch(`https://api.github.com/repos/${config.github.repo}`, { headers: githubHeaders() });
-  if (!response.ok) throw new Error(`GitHub check failed (HTTP ${response.status}) for ${config.github.repo}`);
+  if (!response.ok) {
+    throw new Error(`GitHub check failed (HTTP ${response.status}) for ${config.github.repo}`);
+  }
   const repo = await response.json();
-  if (!repo.permissions?.push) throw new Error(`GITHUB_TOKEN cannot push to ${config.github.repo}`);
+
+  const probe = await fetch(`https://api.github.com/repos/${config.github.repo}/git/refs`, {
+    method: 'POST',
+    headers: githubHeaders(),
+    body: JSON.stringify({ ref: 'refs/heads/__write_probe__', sha: '0'.repeat(40) }),
+  });
+  if (probe.status === 403) {
+    const needed = probe.headers.get('x-accepted-github-permissions') || 'contents=write';
+    throw new Error(
+      `GITHUB_TOKEN cannot write to ${config.github.repo}. GitHub requires "${needed}". `
+      + 'Edit the fine-grained PAT and set Repository permissions -> Contents: Read and write, '
+      + 'and Pull requests: Read and write.');
+  }
+  if (probe.status !== 422 && probe.status !== 201) {
+    throw new Error(`GitHub write probe returned an unexpected HTTP ${probe.status}`);
+  }
+  // A 201 would mean the impossible sha was accepted; clean up defensively.
+  if (probe.status === 201) {
+    await fetch(`https://api.github.com/repos/${config.github.repo}/git/refs/heads/__write_probe__`,
+      { method: 'DELETE', headers: githubHeaders() }).catch(() => {});
+  }
+
   return { repo: repo.full_name, defaultBranch: repo.default_branch };
 }

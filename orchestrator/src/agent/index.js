@@ -1,5 +1,16 @@
 import { config } from '../config.js';
 import { chat } from './llm.js';
+
+/**
+ * Tool output is capped and older output is pruned from the history.
+ *
+ * An agent loop resends its whole conversation on every call, so an uncapped transcript
+ * grows quadratically in tokens and will exhaust a per-minute token quota within a few
+ * steps. Recent output is what the model is reasoning about; older output can be
+ * re-fetched with the same tool call if it is needed again.
+ */
+const TOOL_RESULT_MAX_CHARS = Number(process.env.AGENT_TOOL_RESULT_MAX_CHARS || 6000);
+const FULL_TOOL_RESULTS_KEPT = Number(process.env.AGENT_FULL_TOOL_RESULTS_KEPT || 3);
 import { createTools, formatTestResult } from './tools.js';
 import { SYSTEM_PROMPT, buildIncidentMessage } from './prompt.js';
 
@@ -22,8 +33,12 @@ export async function runAgent({ incident, workspaceDir, onProgress = () => {} }
   let finalText = '';
   let noEditNudges = 0;
 
+  let totalTokens = 0;
+
   for (let iteration = 1; iteration <= config.llm.maxIterations; iteration++) {
+    pruneOldToolResults(messages);
     const response = await chat({ system: SYSTEM_PROMPT, messages, tools: tools.definitions });
+    totalTokens += response.usage?.total_tokens || 0;
 
     if (response.toolCalls.length === 0) {
       const text = (response.text || '').trim();
@@ -52,7 +67,7 @@ export async function runAgent({ incident, workspaceDir, onProgress = () => {} }
         role: 'tool',
         toolCallId: call.id,
         name: call.name,
-        content: result.content.slice(0, 30_000),
+        content: truncate(result.content, TOOL_RESULT_MAX_CHARS),
       });
     }
   }
@@ -62,6 +77,7 @@ export async function runAgent({ incident, workspaceDir, onProgress = () => {} }
     report: parseReport(finalText),
     changedFiles: [...tools.writtenFiles],
     toolLog,
+    totalTokens,
     /** Lets the pipeline re-run the suite authoritatively. */
     runTests: tools.runTests,
   };
@@ -82,6 +98,28 @@ export async function runRepair({ incident, workspaceDir, testResult, onProgress
     onProgress,
   });
   return result;
+}
+
+/**
+ * Collapses all but the most recent tool results to a one-line placeholder, in place.
+ * The model is told it can re-run the tool, so nothing is unrecoverable.
+ */
+function pruneOldToolResults(messages) {
+  const toolIndexes = [];
+  messages.forEach((m, i) => { if (m.role === 'tool') toolIndexes.push(i); });
+
+  const stale = toolIndexes.slice(0, Math.max(0, toolIndexes.length - FULL_TOOL_RESULTS_KEPT));
+  for (const i of stale) {
+    const m = messages[i];
+    if (m.pruned || m.content.length < 200) continue;
+    m.content = `[earlier output of ${m.name} omitted to conserve context — run the tool again if you need it]`;
+    m.pruned = true;
+  }
+}
+
+function truncate(text, maxChars) {
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, maxChars)}\n... [truncated, ${text.length - maxChars} more characters]`;
 }
 
 function parseReport(text) {

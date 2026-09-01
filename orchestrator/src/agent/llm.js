@@ -14,7 +14,8 @@ import { config } from '../config.js';
  */
 
 const REQUEST_TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS || 180_000);
-const MAX_RETRIES = 3;
+const MAX_RETRIES = Number(process.env.LLM_MAX_RETRIES || 8);
+const MAX_BACKOFF_MS = 65_000;
 
 export async function chat({ system, messages, tools }) {
   const provider = PROVIDERS[config.llm.provider];
@@ -29,8 +30,9 @@ export async function chat({ system, messages, tools }) {
     } catch (err) {
       lastError = err;
       if (!isRetryable(err) || attempt === MAX_RETRIES) throw err;
-      const waitMs = 2000 * attempt;
-      console.warn(`[llm] ${err.message} — retrying in ${waitMs}ms (attempt ${attempt}/${MAX_RETRIES})`);
+      const waitMs = retryDelayMs(err, attempt);
+      console.warn(`[llm] ${firstLine(err.message)} — retrying in ${Math.round(waitMs / 1000)}s `
+        + `(attempt ${attempt}/${MAX_RETRIES})`);
       await new Promise((r) => setTimeout(r, waitMs));
     }
   }
@@ -39,6 +41,33 @@ export async function chat({ system, messages, tools }) {
 
 function isRetryable(err) {
   return /\b(429|500|502|503|504)\b/.test(err.message) || /timeout|ETIMEDOUT|ECONNRESET|fetch failed/i.test(err.message);
+}
+
+/**
+ * Rate limit responses say exactly how long to wait ("try again in 16.47s", or a
+ * Retry-After header). Honouring that is the difference between recovering and burning
+ * every retry on a window that has not reopened yet — a fixed short backoff simply fails
+ * three times against a per-minute token quota.
+ */
+function retryDelayMs(err, attempt) {
+  const advised = err.retryAfterMs
+    ?? parseAdvisedWait(err.message);
+  if (advised != null) {
+    return Math.min(advised + 750, MAX_BACKOFF_MS);
+  }
+  return Math.min(2000 * 2 ** (attempt - 1), MAX_BACKOFF_MS);
+}
+
+function parseAdvisedWait(message) {
+  const seconds = message.match(/try again in ([\d.]+)s/i);
+  if (seconds) return Math.ceil(Number(seconds[1]) * 1000);
+  const minutes = message.match(/try again in ([\d.]+)m([\d.]+)?s?/i);
+  if (minutes) return Math.ceil(Number(minutes[1]) * 60_000);
+  return null;
+}
+
+function firstLine(text) {
+  return String(text).split('\n')[0].slice(0, 220);
 }
 
 async function postJson(url, headers, body) {
@@ -50,7 +79,10 @@ async function postJson(url, headers, body) {
   });
   const text = await response.text();
   if (!response.ok) {
-    throw new Error(`LLM HTTP ${response.status}: ${text.slice(0, 600)}`);
+    const err = new Error(`LLM HTTP ${response.status}: ${text.slice(0, 600)}`);
+    const retryAfter = response.headers.get('retry-after');
+    if (retryAfter) err.retryAfterMs = Math.ceil(Number(retryAfter) * 1000);
+    throw err;
   }
   return JSON.parse(text);
 }
@@ -62,6 +94,9 @@ const openAiCompatible = {
     const payload = {
       model: config.llm.model,
       temperature: 0.1,
+      // Reasoning tokens count against the provider's token quota, so the effort level is
+      // configurable — 'low' keeps an agent loop inside a small per-minute budget.
+      ...(process.env.LLM_REASONING_EFFORT ? { reasoning_effort: process.env.LLM_REASONING_EFFORT } : {}),
       messages: [
         { role: 'system', content: system },
         ...messages.map((m) => {
