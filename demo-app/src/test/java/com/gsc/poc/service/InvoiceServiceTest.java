@@ -40,6 +40,12 @@ class InvoiceServiceTest {
     }
 
     @Test
+    @DisplayName("averageLineItemCents returns zero for an invoice with no line items")
+    void averageLineItemCentsReturnsZeroForEmptyInvoice() {
+        assertEquals(0, service.averageLineItemCents(invoiceWithAmounts()));
+    }
+
+    @Test
     @DisplayName("averageLineItemCents truncates toward zero on uneven division")
     void averageLineItemCentsTruncates() {
         assertEquals(1000, service.averageLineItemCents(invoiceWithAmounts(1000, 1001)));
