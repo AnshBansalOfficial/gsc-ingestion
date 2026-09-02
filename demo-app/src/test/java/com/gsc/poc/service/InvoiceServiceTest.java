@@ -46,6 +46,12 @@ class InvoiceServiceTest {
     }
 
     @Test
+    @DisplayName("averageLineItemCents is zero for an invoice with no line items")
+    void averageLineItemCentsIsZeroForEmptyInvoice() {
+        assertEquals(0, service.averageLineItemCents(invoiceWithAmounts()));
+    }
+
+    @Test
     @DisplayName("summarise renders the invoice id, count, total and average")
     void summariseRendersInvoice() {
         String summary = service.summarise(invoiceWithAmounts(1000, 2000));
